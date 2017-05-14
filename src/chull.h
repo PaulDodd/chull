@@ -552,8 +552,6 @@ private:
     {
         unsigned int ndx = indices[0];
         P maxd = 0.0;
-        // for(int i=0; i < n; i++) std::cout << indices[i] << ", ";
-        // std::cout << std::endl;
         SubSpace<P, D> space(m_points, indices, n);
         for(unsigned int p = 0; p < m_points.size(); p++)
         {
@@ -627,7 +625,10 @@ private:
         }
         m_ravg /= P(Nsym);
 
-        std::vector<unsigned int> face(3);
+        std::vector<unsigned int> face(m_dim);
+        assert(m_dim == 3); // I think in any dimension, we must enumerate the C(d+1, d) combinations for each face.
+                            // This shouldn't be hard but I will do it later.
+                            // TODO: is there anywhere else in the code where I assume 3d?
         // face 0
         face[0] = ik[0]; face[1] = ik[1]; face[2] = ik[2];
         std::sort(face.begin(), face.end());
@@ -658,6 +659,7 @@ private:
 
     void build_adjacency_for_face(const unsigned int& f)
         {
+        assert(m_dim == 3); // This assumes 3d!
         if(f >= m_faces.size())
             throw std::runtime_error("index out of range!");
         if(m_deleted[f]) return; // don't do anything there.
@@ -682,6 +684,7 @@ private:
     void build_visible_set(const unsigned int& pointid, const unsigned int& faceid, std::vector< unsigned int >& visible)
         {
         // std::cout << "building visible set point: "<< pointid << " face: " << faceid << std::endl;
+        assert(m_dim == 3); // This assumes 3d!
         visible.clear();
         visible.push_back(faceid);
         std::queue<unsigned int> worklist;
@@ -715,6 +718,7 @@ private:
 
     void build_horizon_set(const std::vector< unsigned int >& visible, std::vector< std::vector<unsigned int> >& horizon)
         {
+        assert(m_dim == 3); // This assumes 3d!
         std::vector< std::vector<unsigned int> > edges;
         for(unsigned int i = 0; i < visible.size(); i++)
             edges_from_face(visible[i], edges); // all visible edges.
