@@ -31,3 +31,6 @@
 
 # visualization files
 *.pos
+
+# build directory
+build
