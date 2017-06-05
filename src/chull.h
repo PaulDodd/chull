@@ -28,9 +28,6 @@ using PlaneRn = Eigen::Hyperplane<P, D>;
 template<class P, int D=Dynamic>
 using VectorRn = PointRn<P,D>;
 
-
-
-
 struct dim{
     const unsigned int value;
     template<class P, int D1, int D2>
@@ -151,16 +148,22 @@ inline VectorRn<P,D> get_normal(const Eigen::Matrix<P, D, N>& points)
     Eigen::FullPivLU< Eigen::Matrix<P, Eigen::Dynamic, Eigen::Dynamic > > lu(space);
     Eigen::Matrix<P, Eigen::Dynamic, Eigen::Dynamic> null_space = lu.kernel();
     // Check the dimension is one.
-    // std::cout << null_space << std::endl;
+
     if(null_space.cols() != 1)
+    {
+        std::cout << "points : " << std::endl;
+        std::cout << points << std::endl;
+        std::cout << "kernel : " << std::endl;
+        std::cout << null_space << std::endl;
         throw(std::runtime_error("space is either under or over specified."));
+    }
     ret = null_space;
     ret.normalize();
     return ret;
 }
 
-template< class P, int D, class MatType >
-inline void slice(const std::vector< VectorRn<P,D> >& points, const std::vector<unsigned int>& indices, MatType& mat)
+template< class P, int D, class MatType, class IndexType>
+inline void slice(const std::vector< VectorRn<P,D> >& points, const std::vector<IndexType>& indices, MatType& mat)
 {
     for(size_t i = 0; i < indices.size(); i++)
         mat.col(i) = points[indices[i]];
@@ -179,8 +182,8 @@ inline void slicen(const std::vector< VectorRn<P,D> >& points, IndexType indices
 // points may contain points inside or outside the body defined by faces.
 // faces may include faces that contain vertices that are inside the body.
 // TODO: replace this as a constructor for the HalfSpace above?
-template<class P, int D>
-inline VectorRn<P,D> getOutwardNormal(const std::vector< VectorRn<P,D> >& points, const VectorRn<P,D>& inside_point, const std::vector<unsigned int>& face)
+template<class P, int D, class IndexType>
+inline VectorRn<P,D> getOutwardNormal(const std::vector< VectorRn<P,D> >& points, const VectorRn<P,D>& inside_point, const std::vector<IndexType>& face)
 {
     // const std::vector<unsigned int>& face = faces[faceid];
     unsigned int d = dim(inside_point).value;
@@ -195,41 +198,25 @@ inline VectorRn<P,D> getOutwardNormal(const std::vector< VectorRn<P,D> >& points
     return (x > 0) ? -normal : normal;
 }
 
-/*
-inline void sortFace(const std::vector< VectorRn<P,D> >& points, const VectorRn<P,D>& inside_point, std::vector< std::vector<unsigned int> >& faces, const unsigned int& faceid, P thresh = 0.0001)
-{
-    // VectorRn<P,D> a = points[faces[faceid][0]], b = points[faces[faceid][1]], c = points[faces[faceid][2]], n, nout;
-    nout = getOutwardNormal(points, inside_point, faces[faceid]);
-    n = cross((b - a),(c - a));
-    if ( dot(nout, n) < 0 )
-        std::reverse(faces[faceid].begin(), faces[faceid].end());
-}
-
-inline void sortFaces(const std::vector< VectorRn<P,D> >& points, std::vector< std::vector<unsigned int> >& faces, P thresh = 0.0001)
-{
-    VectorRn<P,D> inside_point(0.0,0.0,0.0);
-    for(size_t i = 0; i < points.size(); i++)
-    {
-        inside_point += points[i];
-    }
-    inside_point /= P(points.size());
-
-    for( unsigned int f = 0; f < faces.size(); f++ )
-        sortFace(points, inside_point, faces, f, thresh);
-}
-*/
 
 template<class P, int D = Dynamic>
 class ConvexHull
 {
     const unsigned int invalid_index=-1;
 public:
-    ConvexHull(const std::vector< VectorRn<P,D> >& points) : m_points(points) // copies the points.
+    template<class VectorType>
+    ConvexHull(const std::vector< VectorType >& points)
     {
+        m_points.resize(points.size());
+        for(int i = 0; i < points.size(); i++){
+            m_points[i] = points[i]; // copies the points.
+            // std::cout << m_points[i] <<std::endl;
+        }
         assert(points.size() > 0);
-        m_dim = dim(points[0]).value;
+        m_dim = dim(m_points[0]).value;
         m_ravg = VectorRn<P,Eigen::Dynamic>::Zero(m_dim);
     }
+
     template<class MatrixType>
     ConvexHull(const MatrixType& points)
     {
@@ -251,6 +238,7 @@ public:
             return;
 
         // step 1: create a tetrahedron from the first 4 points.
+
         initialize(); // makes the tetrahedron
         for(unsigned int i = 0; i < m_points.size(); i++) // O((dim+1)*N) since we have a tetrahedron
         {
@@ -272,7 +260,8 @@ public:
         }
 
         unsigned int faceid = 0;
-        write_pos_frame(inside);
+        // write_pos_frame(inside);
+
         while(faceid < m_faces.size()) //
         {
             if(m_deleted[faceid]) // this facet is deleted so we can skip it.
@@ -351,7 +340,7 @@ public:
             inside[_id] = true;
             assert(m_deleted.size() == m_faces.size() && m_faces.size() == m_adjacency.size());
             faceid++;
-            write_pos_frame(inside);
+            // write_pos_frame(inside);
             #ifndef NDEBUG //TODO: remove in a bit. here for extra debug and its easy to turn off.
             for(size_t i = 0; i < m_faces.size(); i++)
                 {
@@ -585,7 +574,7 @@ private:
         {
             ik[1] = farthest_point_point(ik[0], true); // will only search for points with a higher index than ik[0].
 
-            for(size_t d = 1; d < Nsym; d++)
+            for(size_t d = 1; d < Nsym-1; d++)
             {
                 if(ik[d] == ik[0])
                     break;
@@ -601,7 +590,8 @@ private:
             else
             {
                 ik[0]++;
-                ik[1] = ik[2] = ik[3] = invalid_index;
+
+                for(size_t d = 1; d < Nsym; d++) ik[d] = invalid_index;
                 if( ik[0] >= m_points.size() ) // tried all of the points and this will not.
                 {
                     ik[0] = invalid_index; // exit loop and throw an error.
@@ -609,7 +599,7 @@ private:
                 }
             }
         }
-        if(ik[0] == invalid_index || ik[1] == invalid_index || ik[2] == invalid_index || ik[3] == invalid_index)
+        if(std::find(ik.begin(), ik.end(), invalid_index) != ik.end())
         {
             std::cerr << std::endl << std::endl<< "*************************" << std::endl;
             for(size_t i = 0; i < m_points.size(); i++)
@@ -650,11 +640,13 @@ private:
         build_adjacency_for_face(1);
         build_adjacency_for_face(2);
         build_adjacency_for_face(3);
+        // std::cout << "initializing normals" << std::endl;
         for(int f = 0; f < m_faces.size(); f++){
             VectorRn<P, D> n = getOutwardNormal(m_points, m_ravg, m_faces[f]);
             // std::cout << "normal "<< f << ": \n" << n << std::endl;
             m_normals.push_back(n);
         }
+        // std::cout << "done" << std::endl;
     }
 
     void build_adjacency_for_face(const unsigned int& f)
