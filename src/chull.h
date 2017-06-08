@@ -16,7 +16,7 @@ template<class P>
 constexpr P zero() { return P(0.0); }
 
 template<class P>
-constexpr P tolerance() { return P(1e-6); }
+constexpr P tolerance() { return P(1e-5); } // TODO: set externally?
 
 using Eigen::Dynamic;
 template<class P, int D=Dynamic>
@@ -230,7 +230,7 @@ public:
     }
 
     void compute()
-        {
+    {
         std::vector<bool> inside(m_points.size(), false); // all points are outside.
         std::vector<unsigned int> outside(m_points.size(), invalid_index);
         try{
@@ -341,27 +341,29 @@ public:
             assert(m_deleted.size() == m_faces.size() && m_faces.size() == m_adjacency.size());
             faceid++;
             // write_pos_frame(inside);
+            }
             #ifndef NDEBUG //TODO: remove in a bit. here for extra debug and its easy to turn off.
             for(size_t i = 0; i < m_faces.size(); i++)
-                {
+            {
                 if(m_deleted[i]) continue;
                 for(size_t j = i+1; j < m_faces.size(); j++)
-                    {
+                {
                     if(m_deleted[j]) continue;
                     for(size_t k = 0; k < m_faces[j].size(); k++)
+                    {
+                        if(signed_distance(m_faces[j][k], i) > 0.1) //  Note this is a large tolerance but this sort of check is prone to numerical errors
                         {
-                        if(is_above(m_faces[j][k], i))
-                            {
                             std::cout << "ERROR!!! point " << m_faces[j][k] << ": [\n" << m_points[m_faces[j][k]] << "]" << std::endl
                                       << "         is above face " << i << ": [" << m_faces[i][0] << ", " << m_faces[i][1] << ", . . . ]" << std::endl
-                                      << "         from the face " << j << ": [" << m_faces[j][0] << ", " << m_faces[j][1] << ", . . . ]" << std::endl;
+                                      << "         from the face " << j << ": [" << m_faces[j][0] << ", " << m_faces[j][1] << ", . . . ]" << std::endl
+                                      << "         distance is " << signed_distance(m_faces[j][k], i) << ", " <<   signed_distance(m_faces[j][k], j) << std::endl
+                                      << "         inside is " << std::boolalpha << inside[m_faces[j][k]] << std::endl;
                             throw std::runtime_error("ERROR in ConvexHull::compute() !");
-                            }
                         }
                     }
                 }
-            #endif
             }
+            #endif
         remove_deleted_faces(); // actually remove the deleted faces.
         // build_edge_list();
         // sortFaces(m_points, m_faces, zero);
@@ -370,7 +372,7 @@ public:
             write_pos_frame(inside);
             throw(e);
         }
-        }
+    }
 
 private:
     void write_pos_frame(const std::vector<bool>& inside)
