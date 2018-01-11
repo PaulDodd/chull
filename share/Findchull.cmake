@@ -22,7 +22,9 @@ find_path(
 
 if(NOT CHULL_INCLUDE_DIR)
   set(CHULL_FOUND NO)
-  # do anything else?
+  message(STATUS "chull NOT found, please specify CHULL_ROOT.")
+else()
+    message(STATUS "Found chull: ${CHULL_INCLUDE_DIR}")
 endif()
 
 # No need to find other libraries yet.
