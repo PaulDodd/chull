@@ -1,16 +1,21 @@
 #pragma once
 
 #include <memory>
+#include <vector>
+#include <string>
 #include <queue>
 #include <set>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <functional>
 #include <eigen3/Eigen/Dense>
 #include <eigen3/Eigen/Sparse>
 #include <eigen3/Eigen/Geometry>
 
 namespace chull{
+
+enum copy_type{shallow, deep};
 
 template<class P>
 constexpr P zero() { return P(0.0); }
@@ -28,12 +33,157 @@ using PlaneRn = Eigen::Hyperplane<P, D>;
 template<class P, int D=Dynamic>
 using VectorRn = PointRn<P,D>;
 
+template<class IndexIterator>
+inline std::vector<int> __make_index_vector(IndexIterator first, IndexIterator last, int N)
+{
+    if(first != last)
+        return std::vector<int>(first, last);
+    std::vector<int> v(N);
+    for(int i = 0; i < N; i ++) v[i] = i;
+    return v;
+}
+
 struct dim{
     const unsigned int value;
     template<class P, int D1, int D2>
     dim(const Eigen::Matrix<P, D1, D2>& m) : value((D1 > 0) ? D1 : m.rows()) { }
     template<class P, int D>
     dim(const Eigen::Hyperplane<P, D>& p) : value((D > 0) ? D : p.dim()) { }
+};
+
+
+template<class P>
+struct support_function // TODO: optimize this by removing expensive vector copy operations!
+{
+    typedef typename Eigen::Matrix<P, Eigen::Dynamic, Eigen::Dynamic > MatrixType;
+
+    typedef typename MatrixType::Index IndexType;
+
+    support_function(const MatrixType& points) : verts(points), m_Indices(__make_index_vector(0,0, points.rows()))
+    {
+    }
+
+    template<class VectorType, class IteratorType>
+    support_function(const std::vector< VectorType > & points, IteratorType first=0, IteratorType last=0)
+        : m_Indices(__make_index_vector(first, last, points.size()))
+    {
+        verts.resize(m_Indices.size(), points[0].rows());
+        for(IndexType i = 0; i < m_Indices.size(); i++)
+            verts.row(i) = points[m_Indices[i]];
+    }
+
+    P operator () (const PointRn<P>& v)
+    {
+        // h(P, v) = sup { a . v : a in P }
+        Eigen::VectorXd dots = verts*v;
+        return dots.maxCoeff();
+    }
+
+    IndexType index(const PointRn<P>& v, bool bMap=true)
+    {
+        Eigen::VectorXd dots = verts*v;
+        P maxv = dots[0];
+        IndexType maxi = 0;
+        for(IndexType i=1; i < dots.rows(); i++)
+        {
+            if(dots[i] > maxv)
+            {
+                maxv = dots[i];
+                maxi = i;
+            }
+        }
+
+        return bMap ? m_Indices[maxi] : maxi;
+    }
+
+    PointRn<P> element(const PointRn<P>& v) { return PointRn<P>(verts.row(index(v, false))); }
+
+    MatrixType verts;
+    std::vector<int> m_Indices;
+};
+
+template<class P, int D=3> // Here D is the ambient space dimension
+struct counter_clockwise
+{
+    counter_clockwise(const PointRn<P,D>& ref, const VectorRn<P,D>& n) : reference(as3D(ref)), normal(as3D(n)), tol(tolerance<P>())
+    {
+        static_assert(D == 2 || D == 3 || D == Dynamic, "Counter Clockwise is only defined for dimemsions 2 and 3.");
+        if(reference.rows() > 3)
+            throw std::runtime_error("Counter Clockwise is only defined for dimemsions 2 and 3.");
+        normal.normalize();
+    }
+    // returns true if point p1's polar angle is less than p2's polar angle from
+    // a given a reference point in the plane normal vector.
+    bool less2(const PointRn<P,3>& a, const PointRn<P,3>& b) const
+    {
+        Eigen::Vector3d va, vb, vab;
+        vab = a-b;
+        va = a - reference;
+        vb = b - reference;
+        if(vab.squaredNorm() < tol)
+            return false;
+        return normal.dot(va.cross(vb)) > 0;
+    }
+    // Container must have the [] operator overloaded
+    template<class IndexType, class Container>
+    bool less(const IndexType& a, const IndexType& b, const Container& pointset) const
+    {
+        VectorRn<P,3> va, vb;
+        va = as3D(pointset[a]) - reference;
+        vb = as3D(pointset[b]) - reference;
+        if(a == b)
+            return false;
+        else if(va.squaredNorm() < tol)
+            return true;
+        else if(vb.squaredNorm() < tol)
+            return false;
+        return normal.dot(va.cross(vb)) > 0;
+    }
+
+    template<class IndexType, class Container>
+    std::function<bool(const IndexType& , const IndexType&) > lessfn(const Container& points) const
+    {
+        return [this, points](const IndexType& a, const IndexType& b) {
+            return this->less(a, b, points);
+        };
+    }
+
+    // returns true if a->b->c makes a left turn, false otherwise (colinear or right turn)
+    bool operator()(const PointRn<P,D>& a, const PointRn<P,D>& b, const PointRn<P,D>& c) const
+    {
+        // VectorRn<P,3> e1 = {}
+        // VectorRn<P,3> e2  = {}
+        VectorRn<P,3> vb = as3D(b);
+        VectorRn<P,3> va, vc;
+        va = as3D(a) - vb;
+        vc = as3D(c) - vb;
+        // std::cout << "a = \n"<< a << std::endl<< std::endl;
+        // std::cout << "b = \n"<< b << std::endl<< std::endl;
+        // std::cout << "c = \n"<< c << std::endl<< std::endl;
+        //
+        // std::cout << "va = \n"<< va << std::endl<< std::endl;
+        // std::cout << "vc = \n"<< vc << std::endl<< std::endl;
+        // std::cout << "n = \n"<< normal << std::endl<< std::endl;
+        // std::cout << "vc x va = \n"<< vc.cross(va) << std::endl<< std::endl;
+        // std::cout << "n * (vc x va) = \n"<< normal.dot(vc.cross(va)) << std::endl<< std::endl;
+        // std::cout << "e1 x e2 = \n"<< as3D<3>({-1.0, 0.0, 0.0}).cross(as3D<3>({0.0, -1.0, 0.0})) << std::endl<< std::endl;
+        return normal.dot(vc.cross(va)) > 0;
+    }
+
+    template<int Do>
+    VectorRn<P,3> as3D(const VectorRn<P,Do> v) const
+    {
+        if(v.rows() == 3)
+            return v;
+        else if (v.rows() == 2)
+            return {v[0], v[1], P(0.0)};
+        else
+            return {v[0], v[1], v[2]};
+    }
+
+    PointRn<P,3>    reference;
+    VectorRn<P,3>   normal;
+    P tol;
 };
 
 template<class P, int D=Dynamic> // Here D is the ambient space dimension
@@ -806,6 +956,105 @@ protected:
     // std::vector< std::vector<unsigned int> >        m_edges; // Always have 2 vertices in an edge.
     std::vector< std::set<unsigned int> >       m_adjacency; // the face adjacency list.
     std::vector<bool>                           m_deleted;
+};
+
+template<class P>
+class GrahamScan
+{
+public:
+    template<class VectorType>
+    GrahamScan(const std::vector< VectorType >& points)
+    {
+        assert(points.size() > 0);
+        m_points.resize(points.size());
+        for(int i = 0; i < points.size(); i++)
+        {
+            m_points[i] = points[i]; // copies the points.
+        }
+        m_dim = dim(m_points[0]).value;
+    }
+
+    template<class MatrixType>
+    GrahamScan(const MatrixType& points)
+    {
+        m_dim = dim(points).value;
+        m_points.reserve(points.cols());
+        for(int i = 0; i < points.cols(); i++)
+        {
+            m_points.push_back(points.col(i));
+        }
+    }
+    template<class OutputIterator, class IndexIterator=int>
+    void compute(OutputIterator hull, IndexIterator first=0, IndexIterator last=0, VectorRn<P, 3> normal = {0,0,1}, P tol=tolerance<P>())
+    {
+        std::vector<int> Index(__make_index_vector(first, last, m_points.size()));
+        size_t N = Index.size();
+        SubSpace<P> plane(m_points, Index, 3, tol);
+        if(plane.dim() != 2)
+        {
+            std::cerr << "output: \n" << plane.basis() << std::endl;
+            throw std::runtime_error("Graham Scan is only valid on 2D subspaces");
+        }
+        VectorRn<P,3> e1 = plane.basis().col(0);
+        VectorRn<P,3> e2 = plane.basis().col(1);
+        // std::vector<int> hull = Index;
+        e1.normalize();
+        e2.normalize();
+        // std::cout << "basis = \n" << e1 << "\n" << e2 << std::endl;
+        support_function<P> supp(m_points, Index.begin(), Index.end());
+        // std::cout << "h(e) = " << supp(e1)<< " @ "<< supp.index(e1)  << std::endl;
+        // std::cout << "supp.element(e1): \n " << supp.element(e1) << std::endl;
+        // VectorRn<P, 3> normal = e2.cross(e1); //TODO: pass in normal vector?
+        normal.normalize();
+        // std::cout << "normal = \n" << normal << "\n" << std::endl;
+
+        counter_clockwise<P> ccw(supp.element(e1), normal);
+        std::function<bool(const int&, const int&)> lessfn = ccw.template lessfn<int, std::vector< VectorRn<P,3> > >(m_points);
+
+        std::vector<int> points(Index);
+        // std::cout << "less(): "<< std::boolalpha << lessfn(Index[1],Index[0]) << '\n';
+        // for(auto i :points)
+        //     std::cout << i << ", ";
+        // std::cout << std::endl;
+        std::sort(points.begin(), points.end(), lessfn);
+        points.insert(points.begin(), points.back());
+
+        // for(auto i :points)
+        //     std::cout << i << ", ";
+        // std::cout << std::endl;
+
+        int M = 1;
+        // std::cout << "ccw(2, 3, 1) = " <<ccw(m_points[2], m_points[3], m_points[1]) << std::endl;
+        // return;
+        // std::cout << " i \t M \tccw" << std::endl;
+        // std::cout << "---\t---\t---" << std::endl;
+        // bool bccw = false;
+        for(int i = 2; i < N+1; i++)
+        {
+            while(!ccw(m_points[points[M-1]], m_points[points[M]], m_points[points[i]]) )
+            {
+                // std::cout << "("<< points[M-1] << ", "<< points[M] << ", "<< points[i]<< ") = " << ccw(m_points[points[M-1]], m_points[points[M]], m_points[points[i]]) << std::endl;
+                // std::cout << i<<'\t'<< M << '\t' << !bccw << std::endl;
+                if( M > 1)      M--;
+                else if(i >= N) break;
+                else            i++;
+
+            }
+            // std::cout << "("<< points[M-1] << ", "<< points[M] << ", "<< points[i]<< ") = " << ccw(m_points[points[M-1]], m_points[points[M]], m_points[points[i]]) << std::endl;
+            // std::cout << i <<'\t'<< M << '\t' << !bccw << std::endl;
+            M++;
+            // std::cout << "swapping M <-> i: " << M << "<->" << i << " (values: " << points[M] << "<->"<< points[i] << ")" << std::endl;
+            std::swap(points[M], points[i]);
+        }
+        std::copy(points.begin(), points.begin()+M, hull);
+        // std::cout << "the hull is(" << M  << "): ";
+        // for(auto i :points)
+        //     std::cout << i << ", ";
+        // std::cout << std::endl;
+    }
+protected:
+    size_t m_dim;
+    std::vector< VectorRn<P,3> >    m_points;
 };
 
 }

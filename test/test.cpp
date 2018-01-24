@@ -2,6 +2,8 @@
 
 #include "../src/chull.h"
 
+template struct chull::counter_clockwise<double, 3>;
+
 int main()
 {
     Eigen::Matrix<double, 2, 2> points2d;
@@ -50,6 +52,31 @@ int main()
     Eigen::Matrix<double, 3, 30> points3d100 = Eigen::Matrix<double, 3, 30>::Random();
     chull::ConvexHull<double> hull(points3d100);
     hull.compute();
+
+    std::vector<Eigen::Vector3d> cube_points;
+    std::vector<double> pm = {-1.0, 1.0};
+    for(auto x : pm)
+        for(auto y : pm )
+            for(auto z: pm)
+                cube_points.push_back(Eigen::Vector3d({x,y,z}));
+    cube_points.push_back(Eigen::Vector3d({-0.999,0.5,0.5}));
+    cube_points.push_back(Eigen::Vector3d({-1.001,0.75,0.25}));
+    cube_points.push_back(Eigen::Vector3d({-1.0,0.25,0.35}));
+    cube_points.push_back(Eigen::Vector3d({-1.0,0.25,0.26}));
+    cube_points.push_back(Eigen::Vector3d({-1.0,-0.5,-0.75}));
+    cube_points.push_back(Eigen::Vector3d({-1.0,0.45,-0.55}));
+    cube_points.push_back(Eigen::Vector3d({-1.0,-0.65,-0.05}));
+    for(size_t i = 0; i < cube_points.size(); i++)
+        std::cout << i << ": (" << cube_points[i][0] << ", " << cube_points[i][1] << ", " << cube_points[i][2] << ")" << std::endl;
+    std::vector<unsigned int> face = {0, 10, 8, 9, 1, 11, 2, 3, 14, 13, 12};
+    chull::GrahamScan<double> gram(cube_points);
+    std::vector<int> ghull;
+    std::back_insert_iterator< std::vector<int> > it(ghull);
+    gram.compute(it, face.begin(), face.end(), {1, 0, 0});
+    std::cout << "gram scan = ";
+    for(int i : ghull)
+        std::cout << i << ", ";
+    std::cout << std::endl;
 
     return 0;
 }
