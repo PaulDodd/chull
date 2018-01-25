@@ -997,60 +997,32 @@ public:
         }
         VectorRn<P,3> e1 = plane.basis().col(0);
         VectorRn<P,3> e2 = plane.basis().col(1);
-        // std::vector<int> hull = Index;
         e1.normalize();
         e2.normalize();
-        // std::cout << "basis = \n" << e1 << "\n" << e2 << std::endl;
         support_function<P> supp(m_points, Index.begin(), Index.end());
-        // std::cout << "h(e) = " << supp(e1)<< " @ "<< supp.index(e1)  << std::endl;
-        // std::cout << "supp.element(e1): \n " << supp.element(e1) << std::endl;
-        // VectorRn<P, 3> normal = e2.cross(e1); //TODO: pass in normal vector?
         normal.normalize();
-        // std::cout << "normal = \n" << normal << "\n" << std::endl;
 
         counter_clockwise<P> ccw(supp.element(e1), normal);
         std::function<bool(const int&, const int&)> lessfn = ccw.template lessfn<int, std::vector< VectorRn<P,3> > >(m_points);
 
         std::vector<int> points(Index);
-        // std::cout << "less(): "<< std::boolalpha << lessfn(Index[1],Index[0]) << '\n';
-        // for(auto i :points)
-        //     std::cout << i << ", ";
-        // std::cout << std::endl;
         std::sort(points.begin(), points.end(), lessfn);
         points.insert(points.begin(), points.back());
 
-        // for(auto i :points)
-        //     std::cout << i << ", ";
-        // std::cout << std::endl;
-
         int M = 1;
-        // std::cout << "ccw(2, 3, 1) = " <<ccw(m_points[2], m_points[3], m_points[1]) << std::endl;
-        // return;
-        // std::cout << " i \t M \tccw" << std::endl;
-        // std::cout << "---\t---\t---" << std::endl;
-        // bool bccw = false;
         for(int i = 2; i < N+1; i++)
         {
             while(!ccw(m_points[points[M-1]], m_points[points[M]], m_points[points[i]]) )
             {
-                // std::cout << "("<< points[M-1] << ", "<< points[M] << ", "<< points[i]<< ") = " << ccw(m_points[points[M-1]], m_points[points[M]], m_points[points[i]]) << std::endl;
-                // std::cout << i<<'\t'<< M << '\t' << !bccw << std::endl;
                 if( M > 1)      M--;
                 else if(i >= N) break;
                 else            i++;
 
             }
-            // std::cout << "("<< points[M-1] << ", "<< points[M] << ", "<< points[i]<< ") = " << ccw(m_points[points[M-1]], m_points[points[M]], m_points[points[i]]) << std::endl;
-            // std::cout << i <<'\t'<< M << '\t' << !bccw << std::endl;
             M++;
-            // std::cout << "swapping M <-> i: " << M << "<->" << i << " (values: " << points[M] << "<->"<< points[i] << ")" << std::endl;
             std::swap(points[M], points[i]);
         }
         std::copy(points.begin(), points.begin()+M, hull);
-        // std::cout << "the hull is(" << M  << "): ";
-        // for(auto i :points)
-        //     std::cout << i << ", ";
-        // std::cout << std::endl;
     }
 protected:
     size_t m_dim;
