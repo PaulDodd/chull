@@ -337,7 +337,8 @@ inline VectorRn<P,D> getOutwardNormal(const std::vector< VectorRn<P,D> >& points
 {
     // const std::vector<unsigned int>& face = faces[faceid];
     unsigned int d = dim(inside_point).value;
-    assert(d < face.size());
+    std::cout << "dim = " << d << " face size = " << face.size() << std::endl;
+    assert(d <= face.size());
     Eigen::Matrix<P, D, D> facet(d,d);
     slicen(points, face, d, facet);
     VectorRn<P,D> di = inside_point - points[face[0]];
