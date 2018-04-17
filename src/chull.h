@@ -345,7 +345,7 @@ inline VectorRn<P,D> getOutwardNormal(const std::vector< VectorRn<P,D> >& points
     P x = normal.dot(di);
     if(fabs(d) < tolerance<P>())
         throw(std::runtime_error("inner point is in the plane."));
-    return (x > 0) ? -normal : normal;
+    return (x > 0) ? VectorRn<P,D>(-normal) : normal;
 }
 
 
